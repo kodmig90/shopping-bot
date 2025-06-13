@@ -1,47 +1,42 @@
+import logging
 import os
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import WebAppInfo
 from aiogram.utils.executor import start_webhook
-from aiogram.dispatcher.webhook import get_new_configured_app
+from dotenv import load_dotenv
 
-# Переменные окружения
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-WEBAPP_URL = os.getenv("WEBAPP_URL")
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+load_dotenv()
 
-# Бот и диспетчер
-bot = Bot(token=BOT_TOKEN)
+API_TOKEN = os.getenv("BOT_TOKEN")
+WEBHOOK_HOST = os.getenv("WEBHOOK_URL")  # например: https://название.onrender.com
+WEBHOOK_PATH = f"/webhook/{API_TOKEN}"
+WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}"
+
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Команда /start
-@dp.message_handler(commands=['start'])
+logging.basicConfig(level=logging.INFO)
+
+
+@dp.message_handler(commands=["start"])
 async def cmd_start(message: types.Message):
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    web_app_button = types.KeyboardButton(
-        text="🛒 Открыть список покупок",
-        web_app=WebAppInfo(url=WEBAPP_URL)
-    )
-    keyboard.add(web_app_button)
-    await message.answer("Привет! Нажми кнопку ниже, чтобы открыть список покупок:", reply_markup=keyboard)
+    await message.answer("Бот работает! Привет 🙂")
 
-# При запуске
-async def on_startup(dp):
+
+async def on_startup(dispatcher):
     await bot.set_webhook(WEBHOOK_URL)
+    logging.info("Webhook установлен")
 
-# При выключении
-async def on_shutdown(dp):
+
+async def on_shutdown(dispatcher):
     await bot.delete_webhook()
+    logging.info("Webhook удалён")
 
-# Запуск
+
 if __name__ == '__main__':
-    app = get_new_configured_app(dispatcher=dp, path='')  # 👈 важно!
     start_webhook(
         dispatcher=dp,
-        webhook_path='',
+        webhook_path=WEBHOOK_PATH,
         on_startup=on_startup,
         on_shutdown=on_shutdown,
-        skip_updates=True,
-        host='0.0.0.0',
-        port=int(os.environ.get('PORT', 8000)),
-        app=app  # 👈 сюда тоже
+        skip_updates=True
     )
