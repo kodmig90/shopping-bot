@@ -2,6 +2,7 @@ import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import WebAppInfo
 from aiogram.utils.executor import start_webhook
+from aiogram.dispatcher.webhook import get_new_configured_app
 
 # Переменные окружения
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -33,6 +34,7 @@ async def on_shutdown(dp):
 
 # Запуск
 if __name__ == '__main__':
+    app = get_new_configured_app(dispatcher=dp, path='')  # 👈 важно!
     start_webhook(
         dispatcher=dp,
         webhook_path='',
@@ -40,5 +42,6 @@ if __name__ == '__main__':
         on_shutdown=on_shutdown,
         skip_updates=True,
         host='0.0.0.0',
-        port=int(os.environ.get('PORT', 8000))
+        port=int(os.environ.get('PORT', 8000)),
+        app=app  # 👈 сюда тоже
     )
