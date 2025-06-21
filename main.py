@@ -32,6 +32,9 @@ async def cmd_start(message: types.Message):
     first_name = message.from_user.first_name
     username = message.from_user.username
 
+    logging.info(f"🔍 SUPABASE_URL: {SUPABASE_URL}")
+    logging.info("🔍 Trying to query Supabase...")
+
     # Проверяем, есть ли пользователь
     result = supabase.from_("users").select("telegram_id").eq("telegram_id", user_id).execute()
 
