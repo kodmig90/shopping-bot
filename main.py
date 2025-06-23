@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 from datetime import datetime
 
-# Загрузка .env
+# Загрузка переменных из .env
 load_dotenv()
 
 API_TOKEN = os.getenv("BOT_TOKEN")
@@ -50,13 +50,18 @@ async def cmd_start(message: types.Message):
 async def cmd_add(message: types.Message):
     user_id = message.from_user.id
     try:
-        args = message.get_args().split(" ", 1)
-        if len(args) < 2:
+        raw_args = message.get_args().strip()
+        if not raw_args:
             await message.answer("❗ Пример: /add 2 Молоко")
             return
 
-        quantity = int(args[0])
-        item = args[1]
+        parts = raw_args.split(maxsplit=1)
+        if len(parts) < 2:
+            await message.answer("❗ Укажи и количество, и название. Пример: /add 2 Молоко")
+            return
+
+        quantity = int(parts[0])
+        item = parts[1].strip()
 
         supabase.from_("shopping_list").insert({
             "telegram_id": user_id,
@@ -66,9 +71,11 @@ async def cmd_add(message: types.Message):
         }).execute()
 
         await message.answer(f"✅ Добавлено: {quantity} × {item}")
+    except ValueError:
+        await message.answer("❗ Количество должно быть числом. Пример: /add 2 Молоко")
     except Exception:
         logging.error("❌ Ошибка при добавлении товара:", exc_info=True)
-        await message.answer("Ошибка при добавлении. Проверь формат команды.")
+        await message.answer("Произошла ошибка при добавлении. Проверь формат команды.")
 
 # /list — просмотр списка
 @dp.message_handler(commands=["list"])
@@ -101,34 +108,4 @@ async def cmd_delete(message: types.Message):
             await message.answer("❗ Пример: /delete Молоко")
             return
 
-        result = supabase.from_("shopping_list").delete().eq("telegram_id", user_id).eq("item", item).execute()
-        deleted = result.data
-
-        if deleted:
-            await message.answer(f"🗑 Удалено: {item}")
-        else:
-            await message.answer("❗ Такой товар не найден.")
-    except Exception:
-        logging.error("❌ Ошибка при удалении товара:", exc_info=True)
-        await message.answer("Ошибка при удалении товара.")
-
-# Webhook события
-async def on_startup(dispatcher):
-    await bot.set_webhook(WEBHOOK_URL)
-    logging.info("✅ Webhook установлен")
-
-async def on_shutdown(dispatcher):
-    await bot.delete_webhook()
-    logging.info("🛑 Webhook удалён")
-
-# Точка входа
-if __name__ == '__main__':
-    start_webhook(
-        dispatcher=dp,
-        webhook_path=WEBHOOK_PATH,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        skip_updates=True,
-        host='0.0.0.0',
-        port=int(os.getenv("PORT", 3000))
-    )
+        result = supabase.from_("shopping_list").delete().eq("telegram_id", user_id).eq("item", item.strip()).execute()
