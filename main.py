@@ -109,3 +109,33 @@ async def cmd_delete(message: types.Message):
             return
 
         result = supabase.from_("shopping_list").delete().eq("telegram_id", user_id).eq("item", item.strip()).execute()
+        deleted = result.data
+
+        if deleted:
+            await message.answer(f"🗑 Удалено: {item}")
+        else:
+            await message.answer("❗ Такой товар не найден.")
+    except Exception:
+        logging.error("❌ Ошибка при удалении товара:", exc_info=True)
+        await message.answer("Ошибка при удалении товара.")
+
+# Webhook события
+async def on_startup(dispatcher):
+    await bot.set_webhook(WEBHOOK_URL)
+    logging.info(f"✅ Webhook установлен: {WEBHOOK_URL}")
+
+async def on_shutdown(dispatcher):
+    await bot.delete_webhook()
+    logging.info("🛑 Webhook удалён")
+
+# Запуск через webhook
+if __name__ == '__main__':
+    start_webhook(
+        dispatcher=dp,
+        webhook_path=WEBHOOK_PATH,
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
+        skip_updates=True,
+        host='0.0.0.0',
+        port=int(os.getenv("PORT", 3000))
+    )
