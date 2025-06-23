@@ -4,7 +4,6 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.utils.executor import start_webhook
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from datetime import datetime
 
 # Загрузка .env
 load_dotenv()
@@ -44,65 +43,17 @@ async def cmd_start(message: types.Message):
         logging.error("❌ Ошибка при обращении к Supabase:", exc_info=True)
         await message.answer("Произошла ошибка при обращении к базе данных.")
 
-@dp.message_handler(commands=["add"])
-async def cmd_add(message: types.Message):
-    user_id = message.from_user.id
-    try:
-        args = message.get_args().split(" ", 1)
-        if len(args) < 2:
-            await message.answer("❗ Пример использования: /add 2 Молоко")
-            return
+# @dp.message_handler(commands=["add"])
+# async def cmd_add(message: types.Message):
+#     ...
 
-        quantity = int(args[0])
-        item = args[1]
+# @dp.message_handler(commands=["list"])
+# async def cmd_list(message: types.Message):
+#     ...
 
-        supabase.from_("shopping_list").insert({
-            "telegram_id": user_id,
-            "item": item,
-            "quantity": quantity,
-            "added_at": datetime.utcnow().isoformat()
-        }).execute()
-        await message.answer(f"✅ Добавлено: {quantity} × {item}")
-    except Exception as e:
-        logging.error("❌ Ошибка при добавлении:", exc_info=True)
-        await message.answer("Произошла ошибка при добавлении товара.")
-
-@dp.message_handler(commands=["list"])
-async def cmd_list(message: types.Message):
-    user_id = message.from_user.id
-    try:
-        result = supabase.from_("shopping_list").select("*").eq("telegram_id", user_id).order("added_at", desc=False).execute()
-        items = result.data
-
-        if not items:
-            await message.answer("🛒 Список покупок пуст.")
-            return
-
-        text = "📝 Твой список покупок:\n"
-        for item in items:
-            text += f"{item['quantity']} × {item['item']}\n"
-        await message.answer(text)
-    except Exception as e:
-        logging.error("❌ Ошибка при получении списка:", exc_info=True)
-        await message.answer("Произошла ошибка при получении списка.")
-
-@dp.message_handler(commands=["delete"])
-async def cmd_delete(message: types.Message):
-    user_id = message.from_user.id
-    try:
-        item = message.get_args()
-        if not item:
-            await message.answer("❗ Пример использования: /delete Молоко")
-            return
-
-        result = supabase.from_("shopping_list").delete().eq("telegram_id", user_id).eq("item", item).execute()
-        if result.count > 0:
-            await message.answer(f"🗑 Удалено: {item}")
-        else:
-            await message.answer("❗ Такой товар не найден.")
-    except Exception as e:
-        logging.error("❌ Ошибка при удалении:", exc_info=True)
-        await message.answer("Произошла ошибка при удалении товара.")
+# @dp.message_handler(commands=["delete"])
+# async def cmd_delete(message: types.Message):
+#     ...
 
 async def on_startup(dispatcher):
     await bot.set_webhook(WEBHOOK_URL)
