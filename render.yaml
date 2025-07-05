@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: shopping-telegram-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: BOT_TOKEN
+        value: <ТВОЙ_ТОКЕН_БОТА>
+      - key: SUPABASE_URL
+        value: <ТВОЙ_SUPABASE_URL>
+      - key: SUPABASE_KEY
+        value: <ТВОЙ_SUPABASE_KEY>
