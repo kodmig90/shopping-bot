@@ -1,72 +1,54 @@
 import os
-from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import ParseMode
-from aiogram.dispatcher.webhook import get_new_configured_app
+import logging
 from fastapi import FastAPI
-from supabase import create_client
+from dotenv import load_dotenv
+import uvicorn
+from supabase import create_client, Client
+from aiogram import Bot, Dispatcher, types, executor
 
-# Загрузка переменных из .env
+# Загрузка .env
 load_dotenv()
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# Настройки
+API_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
-WEBHOOK_URL = f"{os.getenv('RENDER_EXTERNAL_URL')}{WEBHOOK_PATH}"
 
-bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML)
-dp = Dispatcher(bot)
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-@dp.message_handler(commands=["start"])
-async def start_handler(message: types.Message):
-    await message.answer("Привет! Отправь товар, чтобы добавить в список 🛒")
-
-@dp.message_handler(content_types=types.ContentType.TEXT)
-async def add_item(message: types.Message):
-    user_id = message.from_user.id
-    item = message.text.strip()
-
-    supabase.table("shopping_list").insert({
-        "telegram_id": user_id,
-        "item": item,
-        "quantity": 1
-    }).execute()
-
-    await message.answer(f"✅ Добавлено: <b>{item}</b>")
-
-@dp.message_handler(commands=["list"])
-async def list_items(message: types.Message):
-    user_id = message.from_user.id
-    res = supabase.table("shopping_list").select("*").eq("telegram_id", user_id).execute()
-    data = res.data
-
-    if not data:
-        await message.answer("📭 Список пуст.")
-        return
-
-    response = "📝 <b>Твой список:</b>\n"
-    for idx, entry in enumerate(data, start=1):
-        response += f"{idx}. {entry['item']} (x{entry['quantity']})\n"
-
-    await message.answer(response)
-
-@dp.message_handler(commands=["clear"])
-async def clear_list(message: types.Message):
-    user_id = message.from_user.id
-    supabase.table("shopping_list").delete().eq("telegram_id", user_id).execute()
-    await message.answer("🗑 Список очищен.")
-
-# FastAPI + webhook
+# FastAPI
 app = FastAPI()
+
+# Supabase
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Bot
+bot = Bot(token=API_TOKEN)
+dp = Dispatcher(bot)
+
+# Telegram Handlers
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
+    await message.answer("Привет! Отправь продукт, и я добавлю его в список.")
+
+@dp.message_handler()
+async def add_item(message: types.Message):
+    data = {
+        "telegram_id": str(message.from_user.id),
+        "item": message.text,
+    }
+    supabase.table("shopping_list").insert(data).execute()
+    await message.answer(f"Добавлено: {message.text}")
+
+# FastAPI endpoints
+@app.get("/")
+def read_root():
+    return {"status": "ok"}
 
 @app.on_event("startup")
 async def on_startup():
-    await bot.set_webhook(WEBHOOK_URL)
+    logging.warning("Запуск бота...")
+    from threading import Thread
+    Thread(target=lambda: executor.start_polling(dp, skip_updates=True)).start()
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    await bot.delete_webhook()
-
-app.mount(WEBHOOK_PATH, get_new_configured_app(dispatcher=dp, path=WEBHOOK_PATH))
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
