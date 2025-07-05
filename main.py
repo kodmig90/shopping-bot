@@ -1,132 +1,97 @@
-import logging
 import os
-
+import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.utils.executor import start_webhook
-from dotenv import load_dotenv
-from supabase import create_client, Client
+from aiogram.types import Message
+from aiogram.utils import executor
 from aiohttp import web
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
-# Загрузка переменных
 load_dotenv()
+
+# ========== Настройки ==========
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-WEBHOOK_HOST = os.getenv("WEBHOOK_URL")
-WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" if WEBHOOK_HOST else None
-WEBAPP_HOST = "0.0.0.0"
-WEBAPP_PORT = int(os.getenv("PORT", 8000))
 
-# Логирование
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Инициализация
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(bot)
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Команды
+# ========== Хендлеры Telegram-команд ==========
+
 @dp.message_handler(commands=["start"])
-async def cmd_start(message: types.Message):
-    logger.info(f"/start от {message.from_user.id}")
-    await message.answer("Привет! Я бот для списка покупок 🛒\n\n"
-                         "Доступные команды:\n"
-                         "/add [товар] — добавить товар\n"
-                         "/list — посмотреть список\n"
-                         "/delete [номер] — удалить товар")
+async def cmd_start(message: Message):
+    await message.answer("Привет! Я — бот-список покупок 🛒\n\nКоманды:\n/add — добавить товар\n/list — показать список\n/delete — удалить товар\n/ping — проверка связи")
+
+@dp.message_handler(commands=["ping"])
+async def cmd_ping(message: Message):
+    await message.answer("✅ Бот работает")
 
 @dp.message_handler(commands=["add"])
-async def cmd_add(message: types.Message):
-    item = message.get_args()
-    if not item:
-        await message.reply("Укажи товар после команды /add")
+async def cmd_add(message: Message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("❗ Укажите товар. Пример:\n`/add Хлеб`", parse_mode="Markdown")
         return
-    try:
-        supabase.table("shopping_list").insert({
-            "telegram_id": message.from_user.id,
-            "item": item,
-        }).execute()
-        await message.answer(f"✅ Товар «{item}» добавлен")
-    except Exception as e:
-        logger.exception("Ошибка при добавлении")
-        await message.reply("Ошибка при добавлении товара")
+    item = parts[1]
+    user_id = message.from_user.id
+    supabase.table("shopping_list").insert({
+        "telegram_id": user_id,
+        "item": item
+    }).execute()
+    await message.answer(f"➕ Добавлено: {item}")
 
 @dp.message_handler(commands=["list"])
-async def cmd_list(message: types.Message):
-    try:
-        response = supabase.table("shopping_list").select("id, item") \
-            .eq("telegram_id", message.from_user.id).execute()
-        items = response.data
-        if not items:
-            await message.answer("Список пуст.")
-        else:
-            text = "📝 Список покупок:\n\n"
-            for i, entry in enumerate(items, start=1):
-                text += f"{i}. {entry['item']}\n"
-            await message.answer(text)
-    except Exception as e:
-        logger.exception("Ошибка при получении списка")
-        await message.reply("Ошибка при получении списка")
+async def cmd_list(message: Message):
+    user_id = message.from_user.id
+    result = supabase.table("shopping_list").select("id, item").eq("telegram_id", user_id).execute()
+    items = result.data
+    if not items:
+        await message.answer("🧺 Список пуст")
+        return
+    text = "\n".join([f"{item['id']}. {item['item']}" for item in items])
+    await message.answer(f"🛒 Ваш список:\n{text}")
 
 @dp.message_handler(commands=["delete"])
-async def cmd_delete(message: types.Message):
-    arg = message.get_args()
-    if not arg or not arg.isdigit():
-        await message.reply("Укажи номер товара для удаления, например /delete 2")
+async def cmd_delete(message: Message):
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("❗ Укажите номер товара из списка. Пример:\n`/delete 3`", parse_mode="Markdown")
         return
-    index = int(arg) - 1
-    try:
-        response = supabase.table("shopping_list").select("id, item") \
-            .eq("telegram_id", message.from_user.id).execute()
-        items = response.data
-        if index < 0 or index >= len(items):
-            await message.reply("Неверный номер товара")
-            return
-        item_id = items[index]['id']
-        supabase.table("shopping_list").delete().eq("id", item_id).execute()
-        await message.answer(f"🗑️ Удалён: {items[index]['item']}")
-    except Exception as e:
-        logger.exception("Ошибка при удалении")
-        await message.reply("Ошибка при удалении товара")
-
-# Аптайм-эндпоинт
-async def handle_uptime(request):
-    return web.Response(text="✅ Uptime OK")
-
-# Webhook lifecycle
-async def on_startup(dp):
-    if not WEBHOOK_URL:
-        logger.warning("WEBHOOK_URL не задан")
+    item_id = int(parts[1])
+    user_id = message.from_user.id
+    response = supabase.table("shopping_list").delete().eq("telegram_id", user_id).eq("id", item_id).execute()
+    if response.count == 0:
+        await message.answer("⚠️ Товар с таким номером не найден.")
     else:
-        await bot.set_webhook(WEBHOOK_URL)
-        logger.info(f"Webhook установлен: {WEBHOOK_URL}")
+        await message.answer(f"🗑️ Удалено: {item_id}")
 
-async def on_shutdown(dp):
-    logger.info("Удаление webhook...")
-    await bot.delete_webhook()
+# ========== Аптайм-сервер ==========
 
-# Запуск
-if __name__ == "__main__":
-    if not BOT_TOKEN:
-        logger.critical("BOT_TOKEN не установлен!")
-        exit(1)
+async def handle_root(request):
+    return web.Response(text="✅ Uptime OK — бот работает!")
 
+async def handle_ping(request):
+    return web.json_response({"status": "ok"})
+
+async def run_uptime_server():
     app = web.Application()
-    app.router.add_get("/", handle_uptime)
-    app.router.add_get("/uptime", handle_uptime)
+    app.router.add_get("/", handle_root)
+    app.router.add_get("/ping", handle_ping)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, port=8000)
+    await site.start()
 
-    logger.info("🚀 Запуск...")
+# ========== Запуск ==========
 
-    start_webhook(
-        dispatcher=dp,
-        webhook_path=WEBHOOK_PATH,
-        on_startup=on_startup,
-        on_shutdown=on_shutdown,
-        skip_updates=True,
-        host=WEBAPP_HOST,
-        port=WEBAPP_PORT,
-        web_app=app,
+async def main():
+    await asyncio.gather(
+        run_uptime_server(),
+        dp.start_polling()
     )
+
+if __name__ == "__main__":
+    asyncio.run(main())
